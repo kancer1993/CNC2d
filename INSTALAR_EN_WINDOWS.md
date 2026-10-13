@@ -40,12 +40,21 @@ el DXF y/o el G-code (.nc).
 ## Errores frecuentes
 
 ### "can't open file '...app.py': No such file or directory"
-Significa que `app.py` no está en la carpeta donde te encuentras. Solución:
+Significa que `app.py` no está en la carpeta donde te encuentras (tu copia
+local quedó incompleta: solo se sincronizó `requirements.txt`). Soluciones:
+
+**Opción A (recomendada): clonar el repositorio completo**
 ```powershell
-cd C:\Users\JMC\Desktop\workspace   # ve a la carpeta correcta
-dir                                 # verifica que app.py exista ahí
+git clone <URL-del-repositorio> Image2CNC
+cd Image2CNC
+pip install -r requirements.txt
 python app.py
 ```
+
+**Opción B: copiar manualmente TODOS los archivos**
+Deben quedar en la misma carpeta: `app.py`, `converter.py`,
+`requirements.txt` e `INSTALAR_EN_WINDOWS.md`, además de la subcarpeta
+`templates\index.html`. Verifica con `dir` antes de ejecutar.
 
 ### Ruta con `/c:/...` no reconocida en PowerShell
 Esa ruta es de Git-Bash, no de PowerShell. En PowerShell usa siempre rutas
