@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Image2CNC — Imagen a DXF y G-code</title>
+<style>
+  :root{--bg:#0f1420;--card:#1a2233;--acc:#ff9f1c;--acc2:#2ec4b6;--txt:#e8edf5;--mut:#8b98ad;}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--txt);min-height:100vh}
+  header{padding:22px 30px;background:linear-gradient(90deg,#141b2b,#1c2740);border-bottom:2px solid var(--acc)}
+  header h1{font-size:1.5rem}
+  header h1 span{color:var(--acc)}
+  header p{color:var(--mut);font-size:.9rem;margin-top:4px}
+  main{display:grid;grid-template-columns:380px 1fr;gap:20px;padding:20px 30px;max-width:1400px;margin:auto}
+  @media(max-width:950px){main{grid-template-columns:1fr}}
+  .card{background:var(--card);border-radius:12px;padding:18px;border:1px solid #26314a}
+  .card h2{font-size:1rem;margin-bottom:12px;color:var(--acc2);text-transform:uppercase;letter-spacing:.5px}
+  label{display:block;font-size:.8rem;color:var(--mut);margin:10px 0 3px}
+  input[type=number],input[type=file],select{width:100%;padding:8px;border-radius:6px;border:1px solid #33415e;background:#0e1524;color:var(--txt);font-size:.85rem}
+  input[type=range]{width:100%}
+  .row{display:flex;gap:10px}.row>div{flex:1}
+  .check{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:.85rem;color:var(--txt)}
+  .check input{width:auto}
+  button{cursor:pointer;border:none;border-radius:8px;padding:11px 16px;font-weight:600;font-size:.9rem;width:100%;margin-top:12px}
+  .btn-prev{background:var(--acc2);color:#06231f}
+  .btn-dl{background:var(--acc);color:#3a2200}
+  .btn-dl:hover,.btn-prev:hover{filter:brightness(1.15)}
+  #drop{border:2px dashed #3a4a6b;border-radius:10px;padding:26px;text-align:center;color:var(--mut);cursor:pointer;transition:.2s}
+  #drop.over{border-color:var(--acc);color:var(--acc);background:#20293d}
+  #thumb{max-width:100%;max-height:220px;display:none;margin:12px auto 0;border-radius:8px;border:1px solid #33415e}
+  .preview-wrap{position:relative;background:#0b0f18;border-radius:10px;min-height:340px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+  .preview-wrap img{max-width:100%;max-height:520px;image-rendering:pixelated;opacity:.95}
+  .preview-wrap svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-top:14px}
+  .stat{background:#111a2b;border-radius:8px;padding:10px;text-align:center}
+  .stat b{display:block;font-size:1.05rem;color:var(--acc)}
+  .stat small{color:var(--mut);font-size:.7rem}
+  .tabs{display:flex;gap:8px;margin-bottom:8px}
+  .tab{flex:1;padding:8px;text-align:center;border-radius:8px;background:#111a2b;cursor:pointer;font-size:.85rem;color:var(--mut);border:1px solid transparent}
+  .tab.on{color:var(--txt);border-color:var(--acc2)}
+  pre#gc{background:#0b0f18;border-radius:8px;padding:12px;font-size:.72rem;max-height:300px;overflow:auto;color:#9fe8a0;display:block}
+  pre#dx{color:#8fc7ff;display:none}
+  .err{color:#ff6b6b;font-size:.85rem;margin-top:10px;display:none}
+  .hint{font-size:.72rem;color:var(--mut);margin-top:4px}
+  footer{text-align:center;color:var(--mut);font-size:.75rem;padding:16px}
+  fieldset{border:1px solid #26314a;border-radius:8px;padding:10px;margin-top:14px}
+  legend{font-size:.78rem;color:var(--acc);padding:0 6px}
+</style>
+</head>
+<body>
+<header>
+  <h1>&#9881; Image<span>2</span>CNC</h1>
+  <p>Convierte cualquier imagen (PNG, JPG, BMP, WEBP…) en archivos <b>DXF</b> y <b>G-code</b> listos para corte CNC / láser / router.</p>
+</header>
+
+<main>
+  <!-- ======================= PANEL IZQUIERDO ======================= -->
+  <section>
+    <div class="card">
+      <h2>1 · Imagen</h2>
+      <div id="drop">Arrastra una imagen aquí<br>o haz clic para elegir archivo
+        <input type="file" id="file" accept="image/*" hidden>
+      </div>
+      <img id="thumb" alt="vista previa">
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h2>2 · Detección de formas</h2>
+      <label>Modo de umbral</label>
+      <select id="threshold_mode">
+        <option value="otsu">Automático (Otsu)</option>
+        <option value="fixed">Manual</option>
+      </select>
+      <label>Valor de umbral (<span id="tv_lbl">127</span>)</label>
+      <input type="range" id="threshold_value" min="0" max="255" value="127">
+      <div class="check"><input type="checkbox" id="invert"><label for="invert" style="margin:0">Invertir (áreas oscuras = zonas de corte)</label></div>
+      <div class="row">
+        <div><label>Suavizado (px)</label><input type="number" id="blur" value="3" min="0" step="1"></div>
+        <div><label>Cerrar huecos (mm)</label><input type="number" id="close_mm" value="0" min="0" step="0.1"></div>
+      </div>
+      <div class="row">
+        <div><label>Área mínima (mm²)</label><input type="number" id="min_area_mm2" value="2" min="0" step="0.5"></div>
+        <div><label>Simplificar (mm)</label><input type="number" id="simplify" value="0.2" min="0" step="0.05"><div class="hint">tolerancia Douglas-Peucker</div></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h2>3 · Tamaño físico</h2>
+      <div class="row">
+        <div><label>Anchura final (mm)</label><input type="number" id="target_width_mm" placeholder="ej. 100"></div>
+        <div><label>Altura final (mm)</label><input type="number" id="target_height_mm" placeholder="opcional"></div>
+      </div>
+      <div class="hint">Si lo dejas vacío se asume 0.254 mm por píxel (~100 dpi).</div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h2>4 · Parámetros de máquina</h2>
+      <label>Modo de trabajo</label>
+      <select id="mode">
+        <option value="profile">Profile — corte perimetral</option>
+        <option value="engrave">Engrave — grabado relleno</option>
+      </select>
+
+      <fieldset id="fs_profile">
+        <legend>Corte perimetral</legend>
+        <div class="row">
+          <div><label>Espesor material (mm)</label><input type="number" id="material_thk" value="3" min="0.1" step="0.1"></div>
+          <div><label>Pasada Z máx (mm)</label><input type="number" id="z_step" value="1" min="0.1" step="0.1"></div>
+        </div>
+        <div class="row">
+          <div><label>Comp. radio herramienta (mm)</label><input type="number" id="tool_comp" value="0" min="0" step="0.05"></div>
+          <div><label>Avance corte (mm/min)</label><input type="number" id="feed_cut" value="1000"></div>
+        </div>
+      </fieldset>
+
+      <fieldset id="fs_engrave" style="display:none">
+        <legend>Grabado</legend>
+        <div class="row">
+          <div><label>Pasada líneas (mm)</label><input type="number" id="engrave_spacing" value="0.3" min="0.05" step="0.05"></div>
+          <div><label>Profundidad (mm)</label><input type="number" id="engrave_depth" value="0.3" min="0.05" step="0.05"></div>
+        </div>
+        <div><label>Avance grabado (mm/min)</label><input type="number" id="feed_engrave" value="1500"></div>
+      </fieldset>
+
+      <div class="row">
+        <div><label>Avance rápidos (mm/min)</label><input type="number" id="feed_rapid" value="3000"></div>
+        <div><label>Altura segura Z (mm)</label><input type="number" id="safe_z" value="5"></div>
+      </div>
+    </div>
+
+    <button class="btn-prev" id="btnPreview">&#128269; Actualizar previsualización</button>
+    <p class="err" id="err"></p>
+  </section>
+
+  <!-- ======================= PANEL DERECHO ======================= -->
+  <section>
+    <div class="card">
+      <h2>Previsualización de contornos</h2>
+      <div class="preview-wrap" id="pw">
+        <span style="color:var(--mut)">Sube una imagen y pulsa «Actualizar previsualización»</span>
+      </div>
+      <div class="stats" id="stats" style="display:none">
+        <div class="stat"><b id="st_c">–</b><small>contornos</small></div>
+        <div class="stat"><b id="st_l">–</b><small>bucles (incl. agujeros)</small></div>
+        <div class="stat"><b id="st_w">–</b><small>anchura mm</small></div>
+        <div class="stat"><b id="st_h">–</b><small>altura mm</small></div>
+        <div class="stat"><b id="st_len">–</b><small>recorrido mm</small></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h2>Resultado</h2>
+      <div class="tabs">
+        <div class="tab on" data-t="gc">G-code (.nc)</div>
+        <div class="tab" data-t="dx">DXF</div>
+      </div>
+      <pre id="gc">(aquí aparecerá el G-code generado)</pre>
+      <pre id="dx">(aquí aparecerá el DXF generado)</pre>
+
+      <div class="row">
+        <button class="btn-dl" id="btnDxf">&#11015; DXF</button>
+        <button class="btn-dl" id="btnGc">&#11015; G-code</button>
+        <button class="btn-dl" id="btnZip" style="background:#e0e7ff;color:#1a2233">&#128230; Todo (.zip)</button>
+      </div>
+    </div>
+  </section>
+</main>
+<footer>Image2CNC · DXF con LWPOLYLINE en capas CORTE/GRABADO · G-code compatible GRBL (G21/G90) · Verifica siempre el recorrido antes de cortar.</footer>
+
+<script>
+const $ = id => document.getElementById(id);
+const fields = ["threshold_mode","threshold_value","invert","blur","close_mm",
+  "min_area_mm2","simplify","target_width_mm","target_height_mm","mode",
+  "material_thk","z_step","tool_comp","feed_cut","engrave_spacing","engrave_depth",
+  "feed_engrave","feed_rapid","safe_z"];
+
+let fileData = null;
+
+// ---- selección / drag&drop de archivo
+$('drop').onclick = () => $('file').click();
+$('drop').ondragover = e => {e.preventDefault(); $('drop').classList.add('over');};
+$('drop').ondragleave = () => $('drop').classList.remove('over');
+$('drop').ondrop = e => {e.preventDefault(); $('drop').classList.remove('over');
+  if(e.dataTransfer.files.length) setFile(e.dataTransfer.files[0]);};
+$('file').onchange = e => {if(e.target.files.length) setFile(e.target.files[0]);};
+
+function setFile(f){
+  fileData = f;
+  const r = new FileReader();
+  r.onload = ev => { $('thumb').src = ev.target.result; $('thumb').style.display='block'; };
+  r.readAsDataURL(f);
+}
+
+$('threshold_value').oninput = e => $('tv_lbl').textContent = e.target.value;
+$('mode').onchange = e => {
+  const eng = e.target.value === 'engrave';
+  $('fs_engrave').style.display = eng ? '' : 'none';
+  $('fs_profile').style.display = eng ? 'none' : '';
+};
+
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));
+  t.classList.add('on');
+  $('gc').style.display = t.dataset.t==='gc' ? 'block':'none';
+  $('dx').style.display = t.dataset.t==='dx' ? 'block':'none';
+});
+
+function formData(){
+  const fd = new FormData();
+  if(fileData) fd.append('image', fileData);
+  fields.forEach(id => {
+    const el = $(id);
+    if(el.type === 'checkbox') fd.append(id, el.checked ? '1':'0');
+    else fd.append(id, el.value);
+  });
+  return fd;
+}
+
+async function preview(){
+  if(!fileData){showErr('Primero selecciona una imagen.');return;}
+  $('err').style.display='none';
+  const res = await fetch('/preview',{method:'POST',body:formData()});
+  const j = await res.json();
+  if(!res.ok){showErr(j.error||'Error');return;}
+  renderMask(j.mask_png, j.info);
+  showStats(j.info);
+  // generar también el resultado para mostrarlo
+  genResult(false);
+}
+
+function renderMask(b64, info){
+  const pw = $('pw');
+  pw.innerHTML = `<img src="data:image/png;base64,${b64}">` +
+    `<svg viewBox="${info.svg_vb}" preserveAspectRatio="none">${info.svg}</svg>`;
+}
+function showStats(i){
+  $('stats').style.display='grid';
+  $('st_c').textContent=i.contours; $('st_l').textContent=i.loops;
+  $('st_w').textContent=i.width_mm; $('st_h').textContent=i.height_mm;
+  $('st_len').textContent=i.cut_length_mm;
+}
+function showErr(m){const e=$('err');e.textContent=m;e.style.display='block';}
+
+async function genResult(download){
+  if(!fileData){showErr('Primero selecciona una imagen.');return;}
+  let url='/convert';
+  if(download==='dxf')url+='?fmt=dxf';
+  if(download==='gcode')url+='?fmt=gcode';
+  const res = await fetch(url,{method:'POST',body:formData()});
+  if(!res.ok){showErr(await res.text());return;}
+  const blob = await res.blob();
+  if(download){ saveBlob(blob, download==='dxf'?'corte.dxf':download==='gcode'?'corte.nc':'imagen_a_cnc.zip'); return; }
+  const txt = await blob.text();
+  $('gc').textContent = txt.slice(0,60000);
+  // petición separada para el DXF
+  const r2 = await fetch('/convert?fmt=dxf',{method:'POST',body:formData()});
+  $('dx').textContent = (await r2.text()).slice(0,60000);
+}
+
+function saveBlob(b,name){
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(b); a.download=name; a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+$('btnPreview').onclick = preview;
+$('btnDxf').onclick  = ()=>genResult('dxf');
+$('btnGc').onclick   = ()=>genResult('gcode');
+$('btnZip').onclick  = ()=>genResult('zip');
+</script>
+</body>
+</html>
